@@ -1,0 +1,102 @@
+name: Cross-compile and Package
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4.1.7
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y meson ninja-build dpkg-dev
+        
+    - name: Download cross-compiler
+      run: |
+        wget 'https://github.com/tttapa/docker-arm-cross-toolchain/releases/latest/download/x-tools-armv6-rpi-linux-gnueabihf-gcc14.tar.xz' -O- | tar xJ
+
+    - name: Set up cross-compilation environment
+      run: |
+        echo "[binaries]" > armv6-rpi-linux-gnueabihf.txt
+        echo "c = 'armv6-rpi-linux-gnueabihf-gcc'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "ar = 'armv6-rpi-linux-gnueabihf-ar'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "strip = 'armv6-rpi-linux-gnueabihf-strip'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "pkg-config = 'armv6-rpi-linux-gnueabihf-pkg-config'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "[host_machine]" >> armv6-rpi-linux-gnueabihf.txt
+        echo "system = 'linux'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "cpu_family = 'arm'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "cpu = 'armv6l'" >> armv6-rpi-linux-gnueabihf.txt
+        echo "endian = 'little'" >> armv6-rpi-linux-gnueabihf.txt
+
+    - name: Configure Meson
+      run: |
+        export PATH="$PATH:$PWD/x-tools/armv6-rpi-linux-gnueabihf/bin"
+        meson setup builddir --cross-file armv6-rpi-linux-gnueabihf.txt --prefix=/usr
+
+    - name: Build
+      run: |
+        export PATH="$PATH:$PWD/x-tools/armv6-rpi-linux-gnueabihf/bin"
+        ninja -C builddir
+
+    - name: Install
+      run: DESTDIR=../install ninja -C builddir install
+
+    - name: Create post-installation script
+      run: |
+        mkdir -p ./install/DEBIAN
+        cat << EOF > ./install/DEBIAN/postinst
+        #!/bin/sh
+        set -e
+        
+        # Enable the systemd unit
+        systemctl enable ikotv-usb.service || true
+        
+        # Start the systemd unit
+        systemctl start ikotv-usb.service || true
+        
+        exit 0
+        EOF
+
+        cat << EOF > ./install/DEBIAN/prerm
+        #!/bin/sh
+        set -e
+
+        # Stop the systemd unit
+        systemctl stop ikotv-usb.service || true
+
+        # Disable the systemd unit
+        systemctl disable ikotv-usb.service || true
+
+        # Reload systemd daemons
+        systemctl daemon-reload
+
+        exit 0
+        EOF
+
+        chmod 755 ./install/DEBIAN/postinst
+        chmod 755 ./install/DEBIAN/prerm
+
+    - name: Package as .deb
+      run: |
+        PACKAGE_NAME="ikotv-ir-receiver"
+        PACKAGE_VERSION="0.1"
+        echo "Package: $PACKAGE_NAME" > ./install/DEBIAN/control
+        echo "Version: $PACKAGE_VERSION" >> ./install/DEBIAN/control
+        echo "Architecture: armhf" >> ./install/DEBIAN/control
+        echo "Maintainer: İlker Avcı <ikolomiko@gmail.com>" >> ./install/DEBIAN/control
+        echo "Description:  Linux USB gadget driver that maps LIRC events to HID keyboard events" >> ./install/DEBIAN/control
+        echo "Depends: systemd, bash" >> ./install/DEBIAN/control
+        dpkg-deb --build ./install "${PACKAGE_NAME}-${PACKAGE_VERSION}.deb"
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4.4.0
+      with:
+        name: ikotv-ir-receiver-debian-package
+        path: ./*.deb
