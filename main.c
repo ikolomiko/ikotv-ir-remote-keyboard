@@ -13,10 +13,10 @@
 
 static struct timeval last_event_ts;
 
-static int64_t timeval_diff_ms(struct timeval* start, struct timeval* end)
+static long timeval_diff_ms(struct timeval* start, struct timeval* end)
 {
-    int64_t seconds = end->tv_sec - start->tv_sec;
-    int64_t microseconds = end->tv_usec - start->tv_usec;
+    long seconds = end->tv_sec - start->tv_sec;
+    long microseconds = end->tv_usec - start->tv_usec;
     return seconds * 1000 + microseconds / 1000;
 }
 
@@ -78,9 +78,9 @@ static void evcode_to_keypress(int32_t evcode)
 static void print_scancodes(const struct lirc_scancode* scancodes, size_t count)
 {
     for (size_t i = 0; i < count; i++) {
-        uint64_t ts1 = scancodes[i].timestamp / 1000000000ull;
-        uint64_t ts2 = (scancodes[i].timestamp % 1000000000ull) / 1000ull;
-        printf("%lu.%06lu: scancode = 0x%llx\n", ts1, ts2, scancodes[i].scancode);
+        unsigned long long ts1 = scancodes[i].timestamp / 1000000000ull;
+        unsigned long long ts2 = (scancodes[i].timestamp % 1000000000ull) / 1000ull;
+        printf("%llu.%06llu: scancode = 0x%llx\n", ts1, ts2, scancodes[i].scancode);
     }
 }
 
@@ -88,7 +88,7 @@ static void print_eventcodes(const struct input_event* eventcodes, size_t count)
 {
     for (size_t i = 0; i < count; i += 2) {
         struct timeval ts = eventcodes[i].time;
-        int64_t diff = timeval_diff_ms(&last_event_ts, &ts);
+        long diff = timeval_diff_ms(&last_event_ts, &ts);
         printf("diff: %li\n", diff);
         if (diff < 250) {
             break;
@@ -97,8 +97,8 @@ static void print_eventcodes(const struct input_event* eventcodes, size_t count)
         last_event_ts = ts;
 
         int32_t val = eventcodes[i].value;
-        const int64_t ts1 = eventcodes[i].time.tv_sec;
-        const int64_t ts2 = (eventcodes[i].time.tv_usec);
+        const long ts1 = eventcodes[i].time.tv_sec;
+        const long ts2 = (eventcodes[i].time.tv_usec);
         printf("%li.%06li: scancode = %d\n", ts1, ts2, eventcodes[i].value);
         evcode_to_keypress(val);
     }
@@ -108,12 +108,12 @@ static void read_events(const char* lirc_name, int32_t fd)
 {
     struct input_event ev[64];
     struct lirc_scancode sc[64];
-    int64_t rd;
+    ssize_t rd;
     int32_t lircfd = -1;
 
     /* LIRC reports time in monotonic, set event to same */
     {
-        uint32_t mode = CLOCK_MONOTONIC;
+        size_t mode = CLOCK_MONOTONIC;
         ioctl(fd, EVIOCSCLOCKID, &mode);
     }
 
