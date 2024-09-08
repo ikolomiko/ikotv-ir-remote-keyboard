@@ -1,0 +1,14 @@
+[Unit]
+Description=ikoTV USB IR Receiver Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@prefix@/bin/ikotv-usb.sh
+Restart=on-failure
+RestartSec=3s
+StartLimitBurst=3
+StartLimitInterval=100s
+
+[Install]
+WantedBy=multi-user.target
